@@ -1,0 +1,456 @@
+---
+title: |
+  [1]: https://www.facebook.com/An%C3%A1lisis-y-visualizaci%C3%B3n-de-datos-100602148375744
+  [2]: https://raw.githubusercontent.com/DataFeast71/COVID19_plots/main/img/Logo_W.jpeg {width=1in}
+  [![Analisis Y visualizacion][2]][1]
+  Ingresos de representantes de País
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: null
+    df_print: paged
+    highlight: zenburn
+    theme: cerulean
+    toc: true
+    toc_float: true
+    toc_deep: 3
+---
+
+<style>
+.tocify-extend-page {
+  height: 0 !important;
+}
+</style>
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(maps)
+library(highcharter)
+library(scales)
+library(RColorBrewer)
+library(shiny)
+library(plotly)
+library(ggrepel)
+
+# source("Data_preparation_Presidents.R")
+
+contienent_colors <- c("Americas" = "#00a43f",
+                       "Asia" = "#ffd100",
+                       "Europe" = "#005eb2", 
+                       "Africa" = "#ff6d00",
+                       "Oceania" = "#ff001c")
+
+theme_set(theme_bw())
+```
+
+Es interesante la carrera por la presidencia en muchos países. En algunos casos por ideales o luchas políticas con un discurso (real o no) que va dirigido a la gente de sus correspondientes países. Algunos son democrátricos, otros no tantos, pero algo en común es mencionar la lucha contra la pobreza y la desigualdad económica. No obstante, ¿esto aplica en sus sueldos? ¿los países que mantienen una gran pobreza también lo reflejan sus presidentes o solo queda todo en un discurso?
+
+Para responder esto buscamos datos relacionados a los ingresos de los presidentes o representates del gobierno en 2021 los cuales exploraremos con distintos gráficos. Cabe resaltar que varios países presentan tanto un Presidente como un Primer ministro. Los datos los puedes encontrar [aquí](https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government) y para extreaerlos realizamos un script en Python usando _web scrapping_ para tener lo datos en un archivo y tener una mejor manipulación.
+
+```{r}
+df <- read.csv("data/Presidents_Ministers_incomes.csv", stringsAsFactors = FALSE, header = TRUE)
+```
+
+## Preparación de los datos
+
+```{r}
+df_incomes <- df %>% 
+  separate(Head, c("HeadOfState", "Status"), sep = " USD ")
+```
+
+En algunos casos observamos que en lugar de Presidente existe el dato de primeros ministros pero en el caso de _Siria_ hay un sueldo pero no se indica con exactitud que posición es la que esta registrada.
+
+```{r}
+df_incomes <- df_incomes %>% 
+  mutate(HeadOfState = as.numeric(str_replace(HeadOfState, ",", "")))
+
+df_incomes <-  df_incomes %>% 
+  mutate(Status = str_replace(Status, "(\\[\\d*\\])+", ""),
+         Status = str_replace_all(Status, "[\\(\\)]", ""))
+
+df_incomes <- df_incomes %>% 
+  separate(Ministers, c("HeadGoverment", "StatusGoverment"), sep = " USD ") %>% 
+  mutate(StatusGoverment = str_replace(StatusGoverment, "(\\[\\d*\\])+", ""),
+         StatusGoverment = str_replace_all(StatusGoverment, "[\\(\\)]", ""),
+         HeadGoverment = as.numeric(str_replace(HeadGoverment, ",", ""))) 
+```
+
+Para completar más nuestros datos podemos agregar la categoría de **Continente**.
+
+```{r}
+continents <- read.csv("data/Country_Continents.csv", header = TRUE, stringsAsFactors = FALSE)
+
+df_incomes <- df_incomes %>% 
+  left_join(continents, by = c("Country"="Entity"))
+```
+
+## Presidentes y representantes de cada país
+
+En esta sección exploraremos los datos correspondientes de **Presidentes** o **Representante del país** para ver el rango y variación de los sueldos reportados por año. Para esto aprovecharemos el gráfico de _boxplot_ con la columna correspondiente a los continentes ya nos permite ver la distribución de los datos. Además, representamos el sueldo en Millones.
+
+```{r}
+ggplot(df_incomes, aes(x= Continent, y = HeadOfState/1e+06, color = Continent)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter() +
+  scale_y_continuous(labels = dollar) +
+  scale_color_manual(values = contienent_colors) +
+  labs(x = "", y = "Salarios (en Millones USD)", caption = "Data source: Head of Goverment Salaries") +
+  theme(
+    #Legend
+    legend.position = "none",
+    #axis
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    #
+    plot.caption = element_text(size = 8, hjust = 1.0)
+  )
+```
+
+Aqui observamos un problema, ya que con la escala normal, los valores extremos recorren todos los puntos de la gráfica y no se logra observar la distribución de los otros puntos. Si no tenemos cuidado en la escala parecería que todos los demás puntos (Presidentes o Representates de Estado) ganan $0 lo cual es una interpretación incorrecta.
+
+Para estos casos, podemos aplicar una escala logarítmica lo que nos permite ver estos cambios grandes entre los puntos. Cabe destacar que son 3 puntos los que causan todo este cambio.
+
+```{r}
+p <- ggplot(df_incomes, aes(x= Continent, y = HeadOfState + 1, color = Continent)) +
+  geom_jitter(aes(text = sprintf("Country: %s<br>Income: %s USD<br> Head: %s", Country, HeadOfState, Status)), width = 0.4) +
+  labs(x = "", y = "Salario por año") +
+  scale_y_continuous(trans = "log10", labels = dollar) +
+  scale_color_manual(values = contienent_colors) +
+  theme(
+    #Legend
+    legend.position = "none",
+    #axis
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  ) 
+gp <- ggplotly(p, tooltip = "text") %>% 
+  layout(margin = list(b=80, t = 50), annotations = list(x = 1, y = -0.29, text = "Data source: <a href='https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government#cite_note-106'>Wikipedia</a>", 
+                                                          showarrow = F, xref = "paper", yref = "paper", 
+                                                          xanchor = "right", yanchor = "auto", xshift = 0, yshift = 0,
+                                                          font = list(size = 11)))
+div(gp, align="center")
+```
+
+La otra opción es generar intervalos o _bins_ que nos permitar agrupar por el sueldo que mantienen y que nos sera útil para categorizar, por ejemplo, en mapas. 
+
+```{r}
+bins <- c(-1, 1.0e+03, 1.0e+05, 1.0e+06, 1.0e+012)/1e+05
+labels <- c("<1000","1000 - 100000","100000 - 1M", ">=1M")
+
+df_incomes <- df_incomes %>% 
+  mutate(HeadOfState_incomes = HeadOfState/1e+05,
+         Bins = cut(HeadOfState_incomes, breaks = bins, labels = labels, right = FALSE))
+```
+
+Con los mapas podemos representar regiones geográficas, o en este caso en particular, representar por color cada unos de los países si que presentan la información adecuada.  Para ello, podemos usar la paquetería `maps` que contiene las coordenadas de los países para usarlos en `ggplot2`. Aqui, en nuestra opinión, es conveniente ultilizar variables categóricas ya que se evita el problema con los países que presentan un valores muy lejanos a otros puntos. Además, se puede apreciar cuales son los países con rangos similares. 
+
+```{r}
+world <- map_data("world")
+
+worldSubset <- left_join(world, df_incomes,
+                         by = c("region"="Country"))
+
+# Modifica el formato de la grafica.
+plain <- theme(
+  axis.text = element_blank(),
+  axis.line = element_blank(),
+  axis.ticks = element_blank(),
+  panel.border = element_blank(),
+  panel.grid = element_blank(),
+  axis.title = element_blank(),
+  panel.background = element_rect(fill = "white"),
+  plot.title = element_text(hjust = 0.5)
+)
+####
+```
+
+El mapa con la varible continua se veria de la siguiente manera:
+
+```{r}
+worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) +
+  geom_polygon(aes(fill = HeadOfState)) +
+  scale_fill_distiller(name="Sueldo",palette ="RdYlBu", direction = -1) + # o direction=1 para invertir los colores
+  labs(title = "Sueldos de Presidentes/Representantes de Gobierno") +
+  plain
+worldHDI
+```
+
+El problema de esta gráfica es que los valores extremos afectan la escala continua de colores ocultando todos los demás valores, como en los graficos anteriores. También tenemos la opción de obtener el logaritmo pero veamos como se visuzaliza generando los rangos.
+
+```{r}
+worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) +
+  geom_polygon(aes(fill = Bins)) +
+  scale_fill_manual(name = "Rangos", values = brewer.pal(4, "Dark2"), na.value="grey70",
+                    labels = labels,
+                    breaks = labels) +
+  labs(title = "Sueldos de Presidentes/Representantes de Gobierno") +
+  theme(legend.position="bottom") +
+  plain
+worldHDI
+```
+
+Con la variable categorica se puede ver mejor los paises que se encuentran en el mismo rango sin embargo, el detalle será en como se definan los rangos, si son proporcionales o no.
+
+Para completar nuestra exploración de datos trataremos de realizar el mismo gráfico pero interactivo.
+
+Uno de los principales problemas de realizar gráficos de mapas es tener el nombre correcto de los países por lo que debemos verificar si los nombres van de acuerdo al **dataset** de R o de sus paqueterías. Una vez que los nombres de los países coincidan se puede realizar el gráfico con la paqueteria `highcharter`
+
+```{r}
+dat <- iso3166 %>% 
+  rename("iso-a3" = a3)
+
+df_income_countries <- df_incomes %>% 
+  mutate(Country = str_replace(Country, "China", "China(?!:Hong Kong|:Macao)"),
+         Country = str_replace(Country, "Finland", "Finland(?!:Aland)"),
+         Country = str_replace(Country, "^Hong Kong", "China:Hong Kong"),
+         Country = str_replace(Country, "Norway", "Norway(?!:Bouvet|:Svalbard|:Jan Mayen)"),
+         Country = str_replace(Country, "UK", "UK(?!r)")
+         )
+
+df_income_countries <- df_income_countries %>% 
+  left_join(dat[,c(2,4)], by = c("Country" = "mapname"))
+```
+
+```{r}
+# Gradiente
+# hcmap(
+#   map = "custom/world-highres3",
+#   data = df_income_countries,
+#   joinBy = "iso-a3",
+#   value = "HeadOfState",
+#   showInLegend = TRUE,
+#   nullColor = "#DADADA",
+#   download_map_data = TRUE
+# ) %>% 
+#   hc_mapNavigation(enabled = FALSE) %>% 
+#   hc_title(text = "Presidents income")
+```
+
+```{r}
+hcmap(
+  map = "custom/world-highres3",
+  data = df_income_countries,
+  joinBy = "iso-a3",
+  value = "HeadOfState",
+#  showInLegend = TRUE,
+  nullColor = "#DADADA",
+#  download_map_data = TRUE
+) %>% 
+  hc_colorAxis(dataClasses = color_classes(c(0, 1.0e+03, 1.0e+05, 1.0e+06, 1.0e+012))) %>% 
+  hc_legend(layout = "vertical", align = "right", floating = TRUE,
+            valueDecimals = 0) %>% 
+  hc_title(text = "Sueldos de Presidentes/Representantes de Gobierno")
+```
+
+## Ministros
+
+En esta sección exploramos los datos de los primer ministros (o **Representantes del Gobierno**). En los casos en el que no se presente un dato es muy probable que no tengan primer ministro y el presidente es quien cubra esa área.
+
+Al igual que con los Presidentes, usamos el gráfico de _boxplot_. Utilizando la escala normal se ve una mejor distribución de los datos comparado con lo obseravado en Presidentes. No obstante, sigue existiendo puntos con un elevado sueldo a comparación del resto de los países.
+
+```{r}
+ggplot(df_incomes, aes(x= Continent, y = HeadGoverment/1e+06, color = Continent)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter() +
+  labs(x = "", y = "Salarios (en Millones USD) por año") +
+  scale_y_continuous(labels = dollar) +
+  scale_color_manual(values = contienent_colors) +
+  theme(legend.position = "")
+```
+
+Para ver una mejor distribución se puede realizar la escala exponencial.
+
+```{r}
+p <- ggplot(df_incomes, aes(x= Continent, y = HeadGoverment + 1, color = Continent)) +
+  geom_jitter(aes(text = sprintf("Country: %s<br>Income: %s USD<br> Head: %s", Country, HeadGoverment, StatusGoverment)), width = 0.35) +
+  labs(x = "", y = "Salarios por año") +
+  scale_y_continuous(trans = "log10", labels = dollar) +
+  theme(
+    #Legend
+    legend.position = "none",
+    #axis
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  ) 
+gp <- ggplotly(p, tooltip = "text") %>% 
+  layout(margin = list(b=80, t = 50), annotations = list(x = 1, y = -0.29, text = "Data source: <a href='https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government#cite_note-106'>Salaries Head State</a>", 
+                                                          showarrow = F, xref = "paper", yref = "paper", 
+                                                          xanchor = "right", yanchor = "auto", xshift = 0, yshift = 0,
+                                                          font = list(size = 11)))
+div(gp, align="center")
+```
+
+Se puede observar que el primer ministro con mayor sueldo es de **Singapore**.
+
+Al igual que ene la sección anterior, a partir de una varaible númerica se crean intervalos. Con los datos en un formato adecuado se puede representar en un mapa.
+
+```{r}
+bins <- c(-1, 1.0e+04, 5.0e+04, 1.0e+05, 1.0e+07)
+labels <- c("<10000","10000 - 50000","50000 - 100000", ">=100000")
+
+df_incomes <- df_incomes %>% 
+  mutate(HeadGoverment_incomes = HeadGoverment,
+         Bins_Goverment = cut(HeadGoverment_incomes, breaks = bins, labels = labels, right = FALSE))
+
+worldSubset <- left_join(world, df_incomes,
+                         by = c("region"="Country"))
+```
+
+```{r}
+worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) +
+  geom_polygon(aes(fill = HeadGoverment_incomes)) +
+  scale_fill_distiller(name="Salarios",palette ="RdYlBu", direction = -1) + # o direction=1 para invertir los colores
+  labs(title = "Salarios Primer Ministros/Representante de Gobierno") +
+  plain
+worldHDI
+```
+
+## Pricipales Representes de cada País.
+
+Como observamos en la sección anterior, muchos países no presentan un primer ministro, ya que el Presidente es quién cubre el Estado y Gobierno. Para poder tener un panorama más general, comparando los sueldos de los principales representandes de cada país (ya sean presidentes o primeros ministros), en la preparación de los datos se creó una columna con el valor de **Presidente** en caso de no tener un primer ministro.
+
+Para representar esta nueva organización de datos, podemos hacer el gráfico de _boxplot_ o solamente los puntos, mantentiendo la escala exponencial.
+
+```{r}
+df_goverment <- df_incomes %>% 
+  mutate(Goverment = if_else(is.na(HeadGoverment), HeadOfState, HeadGoverment),
+         Goverment_status = if_else(is.na(StatusGoverment), Status, StatusGoverment)) 
+```
+
+Por ejemplo, aqui se resalta cual es el representante con el major sueldo en cada continente.
+
+```{r}
+highest_ <- df_goverment %>% 
+  filter(!is.na(Goverment)) %>% 
+  group_by(Continent) %>% 
+  filter(Goverment == max(Goverment))
+```
+
+```{r}
+df_goverment %>% 
+  filter(!(Country %in% c("Australia", "Brunei", "Cameroon", "Switzerland", "USA"))) %>% 
+ggplot(aes(x= Continent, y = Goverment + 1, color = Continent)) +
+  geom_boxplot(outlier.color = NA,outlier.size = 0,outlier.shape =NA) +
+  geom_jitter(position = position_jitter(width = 0.35, seed = 123), alpha = 0.25) +
+  geom_jitter(data = highest_, 
+              position = position_jitter(width = 0.35, seed = 123)) +
+  geom_text_repel(data = highest_, aes(label = Country), size = 4, color = "black", nudge_y = 0.15, nudge_x = 0.11,
+                  ) +
+  labs(x = "", y = "Salario por año") +
+  scale_y_continuous(trans = "log10", labels = dollar) +
+  scale_color_manual(values = contienent_colors) +
+  labs(caption = "Data source: Head of Goverment (Prime Ministers) Salaries") +
+  theme(
+    #Legend
+    legend.position = "none",
+    #axis
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    #
+    plot.caption = element_text(size = 8, hjust = 1.0)
+  )
+```
+
+```{r}
+p <- ggplot(df_goverment, aes(x= Continent, y = Goverment + 1, color = Continent)) +
+  geom_jitter(aes(text = sprintf("Country: %s<br>Income: %s USD<br> Head: %s", Country, Goverment, Goverment_status)), width = 0.35) +
+  labs(x = "", y = "Salario por año") +
+  scale_y_continuous(trans = "log10", labels = dollar) +
+  theme(
+    #Legend
+    legend.position = "none",
+    #axis
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
+
+gp <- ggplotly(p, tooltip = "text") %>% 
+  layout(margin = list(b=80, t = 50), annotations = list(x = 1, y = -0.29, text = "Data source: <a href='https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government#cite_note-106'>Salaries Head State</a>", 
+                                                          showarrow = F, xref = "paper", yref = "paper", 
+                                                          xanchor = "right", yanchor = "auto", xshift = 0, yshift = 0,
+                                                          font = list(size = 11)))
+div(gp, align="center")
+```
+
+```{r}
+bins <- c(-1, 1.0e+03, 1.0e+05, 1.0e+06, 1.0e+012)/1e+05
+labels <- c("<1000","1000 - 100000","100000 - 1M", ">=1M")
+
+df_goverment <- df_goverment %>% 
+  mutate(Goverment_incomes = Goverment/1e+05,
+         Bins = cut(Goverment_incomes, breaks = bins, labels = labels, right = FALSE))
+
+worldSubset <- left_join(world, df_goverment,
+                         by = c("region"="Country"))
+```
+
+Con los datos en un formato adecuado podemos ahora realizar los mapas junto con la representación de las categorías. 
+
+```{r}
+#### Este es el codigo para realizar el grafico de los paises.
+worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) +
+  geom_polygon(aes(fill = Bins)) +
+  scale_fill_manual(values = brewer.pal(4, "Dark2"),
+                    labels = labels,
+                    breaks = labels) +
+  labs(title = "Representates de Gobierno y Estado") +
+  plain
+worldHDI
+```
+
+Y también mediante un mapa interactivo.
+
+```{r}
+df_goverment <- df_goverment %>% 
+  mutate(Country = str_replace(Country, "China", "China(?!:Hong Kong|:Macao)"),
+         Country = str_replace(Country, "Finland", "Finland(?!:Aland)"),
+         Country = str_replace(Country, "^Hong Kong", "China:Hong Kong"),
+         Country = str_replace(Country, "Norway", "Norway(?!:Bouvet|:Svalbard|:Jan Mayen)"),
+         Country = str_replace(Country, "UK", "UK(?!r)")
+         )
+
+df_goverment <- df_goverment %>% 
+  left_join(dat[,c(2,4)], by = c("Country" = "mapname"))
+```
+
+```{r}
+hcmap(
+  map = "custom/world-highres3",
+  data = df_goverment,
+  joinBy = "iso-a3",
+  value = "Goverment",
+#  showInLegend = TRUE,
+  nullColor = "#DADADA",
+#  download_map_data = TRUE
+) %>% 
+  hc_colorAxis(dataClasses = color_classes(c(0, 1.0e+04, 5.0e+04, 1.0e+05, 1.0e+08))) %>% 
+  hc_legend(layout = "vertical", align = "right", floating = TRUE,
+            valueDecimals = 0) %>% 
+  hc_title(text = "Representates de Gobierno y Estado")
+```
+
+
+Por último, con todo esta preparación de datos, generamos una infografía construida con `ggplot2` para mostrar todos los detalles que se mueden mostrar. Este gráfico lo puedes ver [aqui]().
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
