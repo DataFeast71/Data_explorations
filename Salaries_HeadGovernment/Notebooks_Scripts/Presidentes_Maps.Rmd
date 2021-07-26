@@ -3,7 +3,7 @@ title: |
   [1]: https://www.facebook.com/An%C3%A1lisis-y-visualizaci%C3%B3n-de-datos-100602148375744
   [2]: https://raw.githubusercontent.com/DataFeast71/COVID19_plots/main/img/Logo_W.jpeg {width=1in}
   [![Analisis Y visualizacion][2]][1]
-  Ingresos de representantes de País
+  Ingresos de los Presidentes/Ministros de Distintos Países en el mundo
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -47,12 +47,12 @@ contienent_colors <- c("Americas" = "#00a43f",
 theme_set(theme_bw())
 ```
 
-Es interesante la carrera por la presidencia en muchos países. En algunos casos por ideales o luchas políticas con un discurso (real o no) que va dirigido a la gente de sus correspondientes países. Algunos son democrátricos, otros no tantos, pero algo en común es mencionar la lucha contra la pobreza y la desigualdad económica. No obstante, ¿esto aplica en sus sueldos? ¿los países que mantienen una gran pobreza también lo reflejan sus presidentes o solo queda todo en un discurso?
+En la mayoría de los países, la principal figura política (ya sea un presidente, ministro, rey, etc.), maneja un discurso que va dirigido a la lucha contra la pobreza, la desigualdad económica y la prosperidad en su país, sin embargo, ¿Cuánto gana el principal representante de cada país? ¿Es menor el salario de un presidente en un país pobre, comparado con un país de primer mundo?
 
-Para responder esto buscamos datos relacionados a los ingresos de los presidentes o representates del gobierno en 2021 los cuales exploraremos con distintos gráficos. Cabe resaltar que varios países presentan tanto un Presidente como un Primer ministro. Los datos los puedes encontrar [aquí](https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government) y para extreaerlos realizamos un script en Python usando _web scrapping_ para tener lo datos en un archivo y tener una mejor manipulación.
+Para responder esto, buscamos datos relacionados a los ingresos de los presidentes o representantes del gobierno de cada país en 2021, los cuales exploraremos con distintos gráficos. Cabe resaltar que varios países presentan tanto un Presidente como un Primer ministro. Los datos se pueden encuentrar [aqui](https://en.wikipedia.org/wiki/List_of_salaries_of_heads_of_state_and_government), y para trabajarlos realizamos un script en Python usando _web scrapping_ (ya que los datos no se pueden descargar directamente).
 
 ```{r}
-df <- read.csv("data/Presidents_Ministers_incomes.csv", stringsAsFactors = FALSE, header = TRUE)
+df <- read.csv("../data/Presidents_Ministers_incomes.csv", stringsAsFactors = FALSE, header = TRUE)
 ```
 
 ## Preparación de los datos
@@ -62,7 +62,7 @@ df_incomes <- df %>%
   separate(Head, c("HeadOfState", "Status"), sep = " USD ")
 ```
 
-En algunos casos observamos que en lugar de Presidente existe el dato de primeros ministros pero en el caso de _Siria_ hay un sueldo pero no se indica con exactitud que posición es la que esta registrada.
+En algunos casos observamos que en lugar de “Presidente” existe el dato de “Primeros ministros”. Para el caso de __Syria__, se reporta un sueldo, sin embargo, no se específica en que categoría entra la principal figura política de este país. 
 
 ```{r}
 df_incomes <- df_incomes %>% 
@@ -79,10 +79,10 @@ df_incomes <- df_incomes %>%
          HeadGoverment = as.numeric(str_replace(HeadGoverment, ",", ""))) 
 ```
 
-Para completar más nuestros datos podemos agregar la categoría de **Continente**.
+Para completar más el análisis de estos datos, se agregó una columna que indica el continente al cual corresponde el país, para una mejor comparación.
 
 ```{r}
-continents <- read.csv("data/Country_Continents.csv", header = TRUE, stringsAsFactors = FALSE)
+continents <- read.csv("../data/Country_Continents.csv", header = TRUE, stringsAsFactors = FALSE)
 
 df_incomes <- df_incomes %>% 
   left_join(continents, by = c("Country"="Entity"))
@@ -90,7 +90,7 @@ df_incomes <- df_incomes %>%
 
 ## Presidentes y representantes de cada país
 
-En esta sección exploraremos los datos correspondientes de **Presidentes** o **Representante del país** para ver el rango y variación de los sueldos reportados por año. Para esto aprovecharemos el gráfico de _boxplot_ con la columna correspondiente a los continentes ya nos permite ver la distribución de los datos. Además, representamos el sueldo en Millones.
+En esta sección exploramos los datos correspondientes de **Presidentes** o **Representante del país** para ver su comportamiento y cómo varían los sueldos reportados por año. Para esto, aprovechamos el gráfico de __boxplot__ con la columna correspondiente a los continentes.
 
 ```{r}
 ggplot(df_incomes, aes(x= Continent, y = HeadOfState/1e+06, color = Continent)) +
@@ -109,9 +109,9 @@ ggplot(df_incomes, aes(x= Continent, y = HeadOfState/1e+06, color = Continent)) 
   )
 ```
 
-Aqui observamos un problema, ya que con la escala normal, los valores extremos recorren todos los puntos de la gráfica y no se logra observar la distribución de los otros puntos. Si no tenemos cuidado en la escala parecería que todos los demás puntos (Presidentes o Representates de Estado) ganan $0 lo cual es una interpretación incorrecta.
+Aquí observamos un problema, ya que con la escala normal podemos ver que los valores extremos no se logra observar la distribución de los demás puntos. Si no tenemos cuidado, en la escala parecería que todos los demás puntos (Presidentes) ganan $0 lo cual sería una interpretación incorrecta.
 
-Para estos casos, podemos aplicar una escala logarítmica lo que nos permite ver estos cambios grandes entre los puntos. Cabe destacar que son 3 puntos los que causan todo este cambio.
+Para estos casos, podemos aplicar una escala logarítmica (o exponencial) para distinguir mejor las diferencias entre sueldos. 
 
 ```{r}
 p <- ggplot(df_incomes, aes(x= Continent, y = HeadOfState + 1, color = Continent)) +
@@ -133,7 +133,7 @@ gp <- ggplotly(p, tooltip = "text") %>%
 div(gp, align="center")
 ```
 
-La otra opción es generar intervalos o _bins_ que nos permitar agrupar por el sueldo que mantienen y que nos sera útil para categorizar, por ejemplo, en mapas. 
+La otra opción que tenemos para distinguir las diferencias entre los valores es generar intervalos o _bins_ que nos permitan agrupar por el sueldo que mantienen (como lo veremos más adelante).
 
 ```{r}
 bins <- c(-1, 1.0e+03, 1.0e+05, 1.0e+06, 1.0e+012)/1e+05
@@ -144,7 +144,7 @@ df_incomes <- df_incomes %>%
          Bins = cut(HeadOfState_incomes, breaks = bins, labels = labels, right = FALSE))
 ```
 
-Con los mapas podemos representar regiones geográficas, o en este caso en particular, representar por color cada unos de los países si que presentan la información adecuada.  Para ello, podemos usar la paquetería `maps` que contiene las coordenadas de los países para usarlos en `ggplot2`. Aqui, en nuestra opinión, es conveniente ultilizar variables categóricas ya que se evita el problema con los países que presentan un valores muy lejanos a otros puntos. Además, se puede apreciar cuales son los países con rangos similares. 
+Ahora, otro tipo de gráfico que podemos utilizar para representar los datos es realizando mapas geográficos. Para ello, podemos utilizar la paquetería `maps` que contiene las coordenadas de los países para usarlos en `ggplot2`. Aquí es conveniente utilizar la variable categórica por los intervalos realizados y los colores representarán estos intervalos, ya que como en el ejemplo del box plot los valores extremos afectan la escala continua de colores ocultando todos los demás valores, como podemos ver en la siguiente comparación:
 
 ```{r}
 world <- map_data("world")
@@ -166,8 +166,6 @@ plain <- theme(
 ####
 ```
 
-El mapa con la varible continua se veria de la siguiente manera:
-
 ```{r}
 worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
   coord_fixed(1.3) +
@@ -177,8 +175,6 @@ worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = 
   plain
 worldHDI
 ```
-
-El problema de esta gráfica es que los valores extremos afectan la escala continua de colores ocultando todos los demás valores, como en los graficos anteriores. También tenemos la opción de obtener el logaritmo pero veamos como se visuzaliza generando los rangos.
 
 ```{r}
 worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = group)) + 
@@ -193,11 +189,11 @@ worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = 
 worldHDI
 ```
 
-Con la variable categorica se puede ver mejor los paises que se encuentran en el mismo rango sin embargo, el detalle será en como se definan los rangos, si son proporcionales o no.
+Para completar nuestra exploración de datos realizamos el mismo gráfico, pero interactivo.
 
-Para completar nuestra exploración de datos trataremos de realizar el mismo gráfico pero interactivo.
+Uno de los principales problemas de realizar gráficos de mapas es tener el nombre correcto de los países por lo que debemos verificar si los nombres van de acuerdo con el **dataset** de R o de sus paqueterías. Una vez que los nombres de los países coincidan se puede realizar el gráfico con la paqueteria `highcharter`.
 
-Uno de los principales problemas de realizar gráficos de mapas es tener el nombre correcto de los países por lo que debemos verificar si los nombres van de acuerdo al **dataset** de R o de sus paqueterías. Una vez que los nombres de los países coincidan se puede realizar el gráfico con la paqueteria `highcharter`
+Aquí se muestra el mapa interactivo utilizando las categorías que representan los intervalos: 
 
 ```{r}
 dat <- iso3166 %>% 
@@ -248,9 +244,9 @@ hcmap(
 
 ## Ministros
 
-En esta sección exploramos los datos de los primer ministros (o **Representantes del Gobierno**). En los casos en el que no se presente un dato es muy probable que no tengan primer ministro y el presidente es quien cubra esa área.
+En esta sección exploramos los datos de los primeros ministros (o **Representantes del Gobierno**). En los casos en el que no se presente un dato es muy probable que no tengan primer ministro y el presidente es quien cubra esta área.
 
-Al igual que con los Presidentes, usamos el gráfico de _boxplot_. Utilizando la escala normal se ve una mejor distribución de los datos comparado con lo obseravado en Presidentes. No obstante, sigue existiendo puntos con un elevado sueldo a comparación del resto de los países.
+Al igual que con los presidentes, usamos el gráfico de _boxplot._ Utilizando la escala normal se ve una mejor distribución de los datos, comparado con lo observado en los presidentes:
 
 ```{r}
 ggplot(df_incomes, aes(x= Continent, y = HeadGoverment/1e+06, color = Continent)) +
@@ -262,7 +258,7 @@ ggplot(df_incomes, aes(x= Continent, y = HeadGoverment/1e+06, color = Continent)
   theme(legend.position = "")
 ```
 
-Para ver una mejor distribución se puede realizar la escala exponencial.
+No obstante, se puede mantener la escala exponencial ya que hay un punto que se puede considerar como un **outlier** o extremo: 
 
 ```{r}
 p <- ggplot(df_incomes, aes(x= Continent, y = HeadGoverment + 1, color = Continent)) +
@@ -285,7 +281,7 @@ div(gp, align="center")
 
 Se puede observar que el primer ministro con mayor sueldo es de **Singapore**.
 
-Al igual que ene la sección anterior, a partir de una varaible númerica se crean intervalos. Con los datos en un formato adecuado se puede representar en un mapa.
+Al igual que en la sección anterior, a partir de una variable numérica creamos intervalos. Con los datos en un formato adecuado podemos ahora representar estos datos en un mapa: 
 
 ```{r}
 bins <- c(-1, 1.0e+04, 5.0e+04, 1.0e+05, 1.0e+07)
@@ -311,17 +307,15 @@ worldHDI
 
 ## Pricipales Representes de cada País.
 
-Como observamos en la sección anterior, muchos países no presentan un primer ministro, ya que el Presidente es quién cubre el Estado y Gobierno. Para poder tener un panorama más general, comparando los sueldos de los principales representandes de cada país (ya sean presidentes o primeros ministros), en la preparación de los datos se creó una columna con el valor de **Presidente** en caso de no tener un primer ministro.
+Como observamos en la sección anterior, muchos países no presentan un primer ministro, ya que el Presidente es quien funciona como representante de Estado y de Gobierno. Para poder tener un panorama más general, comparando los sueldos de los principales representantes de cada país (ya sean presidentes o primeros ministros), en la preparación de los datos se creó una columna con el valor de **Presidente** en caso de no tener un primer ministro.
 
-Para representar esta nueva organización de datos, podemos hacer el gráfico de _boxplot_ o solamente los puntos, mantentiendo la escala exponencial.
+Para representar esta nueva organización de datos, podemos hacer el grafico de _boxplot_ con una escala exponencial: 
 
 ```{r}
 df_goverment <- df_incomes %>% 
   mutate(Goverment = if_else(is.na(HeadGoverment), HeadOfState, HeadGoverment),
          Goverment_status = if_else(is.na(StatusGoverment), Status, StatusGoverment)) 
 ```
-
-Por ejemplo, aqui se resalta cual es el representante con el major sueldo en cada continente.
 
 ```{r}
 highest_ <- df_goverment %>% 
@@ -386,7 +380,7 @@ worldSubset <- left_join(world, df_goverment,
                          by = c("region"="Country"))
 ```
 
-Con los datos en un formato adecuado podemos ahora realizar los mapas junto con la representación de las categorías. 
+Y ahora representarlos en un mapa como en las secciones anteriores:
 
 ```{r}
 #### Este es el codigo para realizar el grafico de los paises.
@@ -401,7 +395,7 @@ worldHDI <- ggplot(data = worldSubset, mapping = aes(x = long, y = lat, group = 
 worldHDI
 ```
 
-Y también mediante un mapa interactivo.
+Y también mediante un mapa interactivo: 
 
 ```{r}
 df_goverment <- df_goverment %>% 
@@ -433,24 +427,8 @@ hcmap(
 ```
 
 
-Por último, con todo esta preparación de datos, generamos una infografía construida con `ggplot2` para mostrar todos los detalles que se mueden mostrar. Este gráfico lo puedes ver [aqui]().
+Por último, con todo esta preparación de datos, generamos una infografía construida con `ggplot2` para mostrar todos los detalles que se pueden agregar. Este gráfico lo puedes ver [aqui](https://github.com/DataFeast71/FeastViz/tree/main/Presidents).
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+<p align='center'>
+<a src="https://github.com/DataFeast71/FeastViz/tree/main/Presidents"><img src="https://github.com/DataFeast71/FeastViz/blob/main/Presidents/FeastViz_IngresosGobierno.png?raw=true" width="400"></a>
+</p>
